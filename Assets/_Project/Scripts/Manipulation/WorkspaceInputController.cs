@@ -23,6 +23,7 @@ namespace RuinApp.Manipulation
 
         [Header("Face detection")]
         [SerializeField] private float topFaceNormalThreshold = 0.7f;
+        [SerializeField] private RuinApp.Workspace.ContainerDetector containerDetector;
 
         private Bar heldBar;
         private Cube grabbedCube;
@@ -35,6 +36,9 @@ namespace RuinApp.Manipulation
         {
             if (workspaceCamera == null)
                 workspaceCamera = Camera.main;
+
+            if (containerDetector == null)
+                containerDetector = FindAnyObjectByType<RuinApp.Workspace.ContainerDetector>();
         }
 
         private void Update()
@@ -100,6 +104,9 @@ namespace RuinApp.Manipulation
                 }
 
                 heldBar = newBar;
+
+                if (containerDetector != null)
+                    containerDetector.ReclusterAllBars();
             }
             else
             {
@@ -179,6 +186,11 @@ namespace RuinApp.Manipulation
             if (bondTarget != null)
             {
                 StartCoroutine(MergeBarsAnimated(bondTarget, releasedBar));
+            }
+            else
+            {
+                if (containerDetector != null)
+                    containerDetector.ReclusterAllBars();
             }
         }
 
@@ -262,7 +274,13 @@ namespace RuinApp.Manipulation
                 target.AddMember(c);
             }
 
+            if (incoming.Container != null)
+            {
+                incoming.Container.RemoveMember(incoming);
+            }
+
             Destroy(incoming.gameObject);
+
         }
 
         // ---------------- HELPERS ----------------
