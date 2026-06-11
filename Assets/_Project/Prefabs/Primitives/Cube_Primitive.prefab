@@ -126,3 +126,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RuinApp.Primitives.Cube
   shadowBlobPrefab: {fileID: 3274173622027729050, guid: 0f63b4ef7acb2b14cb469fbd3b2f7bcb, type: 3}
+  config: {fileID: 11400000, guid: 8ea113c4a95301a43900ad3d10e9e69c, type: 2}

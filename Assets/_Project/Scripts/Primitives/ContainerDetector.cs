@@ -15,10 +15,8 @@ namespace RuinApp.Workspace
     {
         [Header("Clustering")]
         [Tooltip("Multiplier on the bond tolerance. Two bars within (bondTolerance × this multiplier) of each other belong to the same container.")]
-        [SerializeField] private float membershipDistanceMultiplier = 2.0f;
-        [SerializeField] private float bondTolerance = 0.3f;
-
-        private float ContainerMembershipDistance => bondTolerance * membershipDistanceMultiplier;
+        [SerializeField] private GrammarConfig config;
+        private float ContainerMembershipDistance => config.ContainerMembershipDistance;
 
         /// <summary>
         /// Re-evaluate all containers on the workspace.
@@ -45,11 +43,12 @@ namespace RuinApp.Workspace
             // Form a Container GameObject for each cluster.
             foreach (List<Bar> cluster in clusters)
             {
-                Container container = Container.CreateForBar(cluster[0]);
+                Container container = Container.CreateForBar(cluster[0], config);
                 for (int i = 1; i < cluster.Count; i++)
                 {
                     container.AddMember(cluster[i]);
                 }
+                container.RefreshShadow();
             }
 
             CleanupEmptyContainers();

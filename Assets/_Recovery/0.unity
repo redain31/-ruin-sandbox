@@ -687,7 +687,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fef280a4813dd6a4981f8eb270497afe, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RuinApp.Workspace.ContainerDetector
-  config: {fileID: 11400000, guid: 8ea113c4a95301a43900ad3d10e9e69c, type: 2}
+  membershipDistanceMultiplier: 2
+  bondTolerance: 0.75
 --- !u!4 &1354808384
 Transform:
   m_ObjectHideFlags: 0
