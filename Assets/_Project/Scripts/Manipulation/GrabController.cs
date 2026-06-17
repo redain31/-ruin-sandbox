@@ -48,6 +48,7 @@ namespace RuinApp.Manipulation
         private Plane ground;
         private Transform grabbedRoot;   // the one thing the drag moves
         private Bar grabbedBar;          // set for cube/bar grabs, null for container grabs (drives bonding)
+        private Container splitOrigin;   // container a cube was split out of; resolve reconsiders it on release
         private Vector3 grabOffset;       // XZ offset from grab point to root, frozen at grab
 
         private void Awake()
@@ -88,6 +89,7 @@ namespace RuinApp.Manipulation
 
         private void BeginGrab()
         {
+            splitOrigin = null;
             Vector2 px = Mouse.current.position.ReadValue();
             if (!ScreenToGround(px, out Vector3 g)) return;
 
@@ -105,7 +107,8 @@ namespace RuinApp.Manipulation
 
                 if (hit.normal.y > topFaceNormalThreshold)
                 {
-                    grabbedBar = SplitHere(cube);                // TOP -> cube depth (split)
+                    splitOrigin = cube.Bar.Container;            // resolve reconsiders this on release
+                    grabbedBar = DetachToNewBar(cube);           // TOP -> detach only, no teardown
                     grabbedRoot = grabbedBar.transform;
                     Log("top  -> split bar");
                 }
@@ -150,8 +153,10 @@ namespace RuinApp.Manipulation
         {
             Transform root = grabbedRoot;
             Bar released = grabbedBar;
+            Container origin = splitOrigin;
             grabbedRoot = null;
             grabbedBar = null;
+            splitOrigin = null;
 
             // Magnet: a moved bar snaps onto a neighbour's right face if within tolerance.
             if (released != null)
@@ -159,7 +164,7 @@ namespace RuinApp.Manipulation
                 Bar target = FindBondCandidate(released);
                 if (target != null)
                 {
-                    StartCoroutine(MergeBarsAnimated(target, released)); // resolves neighbourhood when done
+                    StartCoroutine(MergeBarsAnimated(target, released, origin)); // resolves (+cleans origin) when done
                     return;
                 }
             }
@@ -168,7 +173,8 @@ namespace RuinApp.Manipulation
 
             if (released != null)
             {
-                detector.ResolveNeighborhood(new List<Bar> { released }); // bar/cube grab: one bar moved
+                // bar/cube grab: one bar moved; origin (non-null only for a split) is reconsidered too
+                detector.ResolveNeighborhood(new List<Bar> { released }, origin);
             }
             else
             {
@@ -211,7 +217,7 @@ namespace RuinApp.Manipulation
             return best;
         }
 
-        private IEnumerator MergeBarsAnimated(Bar target, Bar incoming)
+        private IEnumerator MergeBarsAnimated(Bar target, Bar incoming, Container origin = null)
         {
             Cube targetRightmost = target.GetRightmostMember();
             Vector3 baseTarget = targetRightmost.transform.position + new Vector3(1f, 0f, 0f);
@@ -244,25 +250,28 @@ namespace RuinApp.Manipulation
             if (incoming.Container != null) incoming.Container.RemoveMember(incoming);
             Destroy(incoming.gameObject);
 
-            if (detector != null) detector.ResolveNeighborhood(new List<Bar> { target });
+            if (detector != null) detector.ResolveNeighborhood(new List<Bar> { target }, origin);
         }
 
         // ---------------- structural helpers ----------------
 
-        /// <summary>Peel this cube (and everything right of it) into a new bar. The general split;
-        /// on a 1-cube bar it degenerates to a fresh wrapper and the empty original self-destructs
-        /// (the die-at-0 rule), so no count is read.</summary>
-        private Bar SplitHere(Cube cube)
+        /// <summary>Detach this cube (and everything right of it) into a new bar. Bar-level surgery
+        /// only: the emptied leftover bar is destroyed (unambiguous garbage), but NO container is
+        /// torn down here. Container lifecycle is owned entirely by ResolveNeighborhood, seeded with
+        /// the origin container (splitOrigin) on release.</summary>
+        private Bar DetachToNewBar(Cube cube)
         {
             Bar oldBar = cube.Bar;
-            Container oldContainer = oldBar.Container;
 
             List<Cube> peeled = oldBar.RemoveFromIndex(oldBar.IndexOf(cube));
             Bar newBar = Bar.CreateForCube(peeled[0]);
             for (int i = 1; i < peeled.Count; i++) newBar.AddMember(peeled[i]);
 
-            oldBar.DestroyIfEmpty();
-            if (oldContainer != null) oldContainer.DestroyIfEmpty();
+            if (oldBar.Length == 0)
+            {
+                if (oldBar.Container != null) oldBar.Container.RemoveMember(oldBar);
+                Destroy(oldBar.gameObject);
+            }
             return newBar;
         }
 

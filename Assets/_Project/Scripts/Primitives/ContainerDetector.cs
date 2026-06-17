@@ -20,11 +20,15 @@ namespace RuinApp.Workspace
         /// <summary>
         /// Re-resolve container membership around the bars that just moved. Gathers the affected
         /// set (each moved bar, its old cluster-mates, and the clusters of any bar it now overlaps),
-        /// dissolves only those containers, re-clusters only that set, and lets the emptied
-        /// containers self-destruct. One level suffices: existing clusters are already internally
+        /// dissolves only those containers, re-clusters only that set, and lets emptied containers
+        /// self-destruct (die-at-0). One level suffices: existing clusters are already internally
         /// valid, so only the moved bars introduce new adjacencies.
+        ///
+        /// 'alsoReconsider' force-includes one more container — the one a cube was just split out of —
+        /// even if it is now empty, so its remainder re-clusters or it self-destructs. This is what
+        /// lets resolve own ALL container lifecycle; the split path performs no teardown of its own.
         /// </summary>
-        public void ResolveNeighborhood(List<Bar> movedBars)
+        public void ResolveNeighborhood(List<Bar> movedBars, Container alsoReconsider = null)
         {
             HashSet<Bar> affected = new HashSet<Bar>();
             HashSet<Container> touched = new HashSet<Container>();
@@ -47,7 +51,11 @@ namespace RuinApp.Workspace
                         Include(other);                  // ...and their whole clusters
             }
 
-            if (affected.Count == 0) return;
+            // The origin container of a split: reconsider it even if now empty.
+            if (alsoReconsider != null && touched.Add(alsoReconsider))
+                foreach (Bar mate in alsoReconsider.Members) Include(mate);
+
+            if (affected.Count == 0 && touched.Count == 0) return;
 
             // Dissolve every touched container; all its bars are already in 'affected'.
             foreach (Container c in touched)
@@ -61,7 +69,7 @@ namespace RuinApp.Workspace
                 for (int i = 1; i < cluster.Count; i++) container.AddMember(cluster[i]);
             }
 
-            // Emptied dissolved containers self-destruct.
+            // Emptied dissolved containers (including a now-empty origin) self-destruct.
             foreach (Container c in touched)
                 if (c != null) c.DestroyIfEmpty();
         }

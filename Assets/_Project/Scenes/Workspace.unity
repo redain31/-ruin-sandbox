@@ -683,7 +683,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1354808382}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fef280a4813dd6a4981f8eb270497afe, type: 3}
+  m_Script: {fileID: 11500000, guid: 355c1c0c93e5bc44db0b228009ca97dd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RuinApp.Workspace.ContainerDetector
   config: {fileID: 11400000, guid: 8ea113c4a95301a43900ad3d10e9e69c, type: 2}
