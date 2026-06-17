@@ -17,7 +17,6 @@ namespace RuinApp.Primitives
         public IReadOnlyList<Bar> Members => members;
         public bool ShouldVisualize => members.Count >= 2;
 
-        private ContainerShadowMesh shadowMesh;
         private GrammarConfig config;
 
         public static Container CreateForBar(Bar bar, GrammarConfig config)
@@ -69,39 +68,12 @@ namespace RuinApp.Primitives
         /// Rebuilds the shadow mesh from member cube claims.
         /// Shows the shadow only when the container has 2+ members.
         /// </summary>
-        public void RefreshShadow()
-        {
-            if (shadowMesh == null)
-            {
-                GameObject shadowGO = new GameObject("ShadowMesh");
-                shadowGO.transform.SetParent(transform);
-                shadowGO.transform.localPosition = Vector3.zero;
-                shadowMesh = shadowGO.AddComponent<ContainerShadowMesh>();
-
-                MeshRenderer mr = shadowGO.GetComponent<MeshRenderer>();
-                if (config != null && config.shadowMaterial != null)
-                    mr.sharedMaterial = config.shadowMaterial;
-            }
-
-            if (!ShouldVisualize)
-            {
-                shadowMesh.ClearMesh();
-                return;
-            }
-
-            List<Rect> claims = new List<Rect>();
-            foreach (Bar bar in members)
-            {
-                foreach (Cube cube in bar.Members)
-                {
-                    claims.Add(cube.GetClaimedArea());
-                }
-            }
-            shadowMesh.Rebuild(claims);
-        }
-
+        
         public void DestroyIfEmpty()
         {
+            // Purge any destroyed bars from the members list (fake-null references).
+            members.RemoveAll(bar => bar == null);
+            
             if (members.Count == 0)
                 Destroy(gameObject);
         }

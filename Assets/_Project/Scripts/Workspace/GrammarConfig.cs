@@ -19,12 +19,13 @@ namespace RuinApp.Workspace
         [Tooltip("How close a cube's left face must be to another's right face to bond into a bar.")]
         public float bondTolerance = 0.3f;
 
-        [Header("Container")]
-        [Tooltip("How far beyond its footprint each cube 'claims' area. This single value defines BOTH " +
-                 "container membership (cubes whose claims overlap are in the same container) AND " +
-                 "the shadow region extension. Membership and shadow shape stay unified by construction.")]
-        public float containerClaimMargin = 0.5f;
-        
+        [Header("Claim & Shadow")]
+        [Tooltip("Scales each cube's claimed area. 1 = exactly the cube footprint; 2 = default (extends " +
+                "half a unit each side); below 1 shrinks; above 2 grows. Drives BOTH the shadow visual " +
+                "size AND the container membership threshold — unified by this single value.")]
+        [Range(0f, 10f)]
+        public float claimMultiplier = 2f;
+                
         [Header("Container Shadow")]
         [Tooltip("Material applied to the container shadow mesh.")]
         public Material shadowMaterial;
@@ -32,6 +33,11 @@ namespace RuinApp.Workspace
         /// The effective distance between two cube edges below which they share a container.
         /// Derived from the claim margin: two claims overlap when edge-to-edge distance < 2 * margin.
         /// </summary>
-        public float ContainerMembershipDistance => containerClaimMargin * 2f;
+        private void OnValidate()
+        {
+            // When the multiplier (or any config value) is changed in the Inspector,
+            // propagate to all live shadows. Editor-time / play-mode tuning convenience.
+            RuinApp.Primitives.CubeShadow.RefreshAll();
+        }
     }
 }

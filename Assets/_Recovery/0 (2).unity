@@ -616,7 +616,7 @@ GameObject:
   - component: {fileID: 1275424758}
   - component: {fileID: 1275424759}
   m_Layer: 0
-  m_Name: GrabController
+  m_Name: WorkspaceInputController
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -646,17 +646,19 @@ MonoBehaviour:
   m_GameObject: {fileID: 1275424756}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7ca48043c2a27894188ddd62ac66dd53, type: 3}
+  m_Script: {fileID: 11500000, guid: 8b463d7d71ab66345995da7213a0ad90, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RuinApp.Manipulation.GrabController
-  cam: {fileID: 330585545}
-  groundY: 0
+  m_EditorClassIdentifier: Assembly-CSharp::RuinApp.Manipulation.WorkspaceInputController
+  workspaceCamera: {fileID: 330585545}
+  draggableLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  dragHeight: 0.5
+  bondTolerance: 0.3
+  snapDurationSeconds: 0.2
   topFaceNormalThreshold: 0.7
-  bondTolerance: 0.7
-  snapDurationSeconds: 0.1
-  config: {fileID: 11400000, guid: 8ea113c4a95301a43900ad3d10e9e69c, type: 2}
-  detector: {fileID: 1354808383}
-  debugLog: 0
+  containerDetector: {fileID: 0}
+  debugPointer: 1
 --- !u!1 &1354808382
 GameObject:
   m_ObjectHideFlags: 0

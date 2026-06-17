@@ -125,5 +125,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 121ed76f22f835843a886a720e601f29, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RuinApp.Primitives.Cube
-  shadowBlobPrefab: {fileID: 3274173622027729050, guid: 0f63b4ef7acb2b14cb469fbd3b2f7bcb, type: 3}
+  cubeShadowPrefab: {fileID: 6375309754502831873, guid: a32e81fc4c2b3594e9e640610a5a8e6c, type: 3}
   config: {fileID: 11400000, guid: 8ea113c4a95301a43900ad3d10e9e69c, type: 2}

@@ -5,56 +5,76 @@ using RuinApp.Primitives;
 namespace RuinApp.Workspace
 {
     /// <summary>
-    /// Workspace-level service that reads all bars on the workspace and
-    /// partitions them into containers based on spatial proximity.
-    /// Containers form around clusters of bars within containerMembershipDistance.
-    /// 
-    /// Called on bar lifecycle events (creation, drag-end, merge, split) by the input controller.
+    /// Local, event-driven container grouping. Replaces the old global ReclusterAllBars sweep:
+    /// when bars move, only their NEIGHBOURHOOD is re-resolved; clusters elsewhere are left
+    /// exactly as they are, and containers that empty out self-destruct (die-at-0).
+    ///
+    /// Bonding's regroup and claim-grab's regroup both call ResolveNeighborhood, so grouping has
+    /// a single decision path. The grouping rule is unchanged: bars whose claimed areas overlap
+    /// share a container.
     /// </summary>
     public class ContainerDetector : MonoBehaviour
     {
-        [Header("Clustering")]
-        [Tooltip("Multiplier on the bond tolerance. Two bars within (bondTolerance × this multiplier) of each other belong to the same container.")]
         [SerializeField] private GrammarConfig config;
-        private float ContainerMembershipDistance => config.ContainerMembershipDistance;
 
         /// <summary>
-        /// Re-evaluate all containers on the workspace.
-        /// Existing containers are dissolved; new containers are formed based on current bar positions.
+        /// Re-resolve container membership around the bars that just moved. Gathers the affected
+        /// set (each moved bar, its old cluster-mates, and the clusters of any bar it now overlaps),
+        /// dissolves only those containers, re-clusters only that set, and lets the emptied
+        /// containers self-destruct. One level suffices: existing clusters are already internally
+        /// valid, so only the moved bars introduce new adjacencies.
         /// </summary>
-        public void ReclusterAllBars()
+        public void ResolveNeighborhood(List<Bar> movedBars)
         {
-            Bar[] allBars = FindObjectsByType<Bar>(FindObjectsInactive.Exclude);
-            if (allBars.Length == 0)
+            HashSet<Bar> affected = new HashSet<Bar>();
+            HashSet<Container> touched = new HashSet<Container>();
+
+            void Include(Bar b)
             {
-                CleanupEmptyContainers();
-                return;
+                if (b == null || b.Length == 0 || !affected.Add(b)) return;
+                if (b.Container != null && touched.Add(b.Container))
+                    foreach (Bar mate in b.Container.Members) Include(mate); // pull whole old cluster
             }
 
-            // Detach all bars from their current containers — we'll re-cluster from scratch.
-            // This is simpler than computing deltas, and the operation is cheap at our scale.
-            DetachAllBarsFromContainers(allBars);
+            Bar[] all = AllLiveBars();
 
-            // Build clusters by greedy union: for each bar, check whether it belongs to any
-            // existing cluster (by proximity to any of that cluster's members). If yes, join it.
-            // If it belongs to multiple, merge those clusters. If none, start a new cluster.
-            List<List<Bar>> clusters = ClusterBars(allBars);
+            foreach (Bar moved in movedBars)
+            {
+                if (moved == null || moved.Length == 0) continue;
+                Include(moved);
+                foreach (Bar other in all)               // moved bar's new spatial neighbours...
+                    if (other != moved && BarsAreClose(moved, other))
+                        Include(other);                  // ...and their whole clusters
+            }
 
-            // Form a Container GameObject for each cluster.
-            foreach (List<Bar> cluster in clusters)
+            if (affected.Count == 0) return;
+
+            // Dissolve every touched container; all its bars are already in 'affected'.
+            foreach (Container c in touched)
+                foreach (Bar bar in new List<Bar>(c.Members))
+                    c.RemoveMember(bar);
+
+            // Re-cluster ONLY the affected set, rebuild containers.
+            foreach (List<Bar> cluster in ClusterBars(new List<Bar>(affected).ToArray()))
             {
                 Container container = Container.CreateForBar(cluster[0], config);
-                for (int i = 1; i < cluster.Count; i++)
-                {
-                    container.AddMember(cluster[i]);
-                }
-                container.RefreshShadow();
+                for (int i = 1; i < cluster.Count; i++) container.AddMember(cluster[i]);
             }
 
-            CleanupEmptyContainers();
+            // Emptied dissolved containers self-destruct.
+            foreach (Container c in touched)
+                if (c != null) c.DestroyIfEmpty();
         }
 
-        // ---------------- Cluster computation ----------------
+        private Bar[] AllLiveBars()
+        {
+            Bar[] found = FindObjectsByType<Bar>(FindObjectsInactive.Exclude);
+            List<Bar> live = new List<Bar>();
+            foreach (Bar b in found) if (b != null && b.Length > 0) live.Add(b);
+            return live.ToArray();
+        }
+
+        // ---- clustering (unchanged: bars whose claims overlap belong together) ----
 
         private List<List<Bar>> ClusterBars(Bar[] bars)
         {
@@ -62,125 +82,44 @@ namespace RuinApp.Workspace
 
             foreach (Bar bar in bars)
             {
-                List<List<Bar>> clustersJoined = new List<List<Bar>>();
-
-                // Find which existing clusters this bar is close to.
+                List<List<Bar>> joined = new List<List<Bar>>();
                 foreach (List<Bar> cluster in clusters)
-                {
                     foreach (Bar member in cluster)
-                    {
-                        if (BarsAreClose(bar, member))
-                        {
-                            clustersJoined.Add(cluster);
-                            break;
-                        }
-                    }
-                }
+                        if (BarsAreClose(bar, member)) { joined.Add(cluster); break; }
 
-                if (clustersJoined.Count == 0)
+                if (joined.Count == 0)
                 {
-                    // New cluster of one.
                     clusters.Add(new List<Bar> { bar });
                 }
-                else if (clustersJoined.Count == 1)
+                else if (joined.Count == 1)
                 {
-                    // Join the one cluster it's near.
-                    clustersJoined[0].Add(bar);
+                    joined[0].Add(bar);
                 }
                 else
                 {
-                    // Belongs to multiple clusters → merge them all into the first.
-                    List<Bar> primary = clustersJoined[0];
+                    List<Bar> primary = joined[0];
                     primary.Add(bar);
-                    for (int i = 1; i < clustersJoined.Count; i++)
+                    for (int i = 1; i < joined.Count; i++)
                     {
-                        primary.AddRange(clustersJoined[i]);
-                        clusters.Remove(clustersJoined[i]);
+                        primary.AddRange(joined[i]);
+                        clusters.Remove(joined[i]);
                     }
                 }
             }
-
             return clusters;
         }
 
-        /// <summary>
-        /// Returns true if the rectangular footprints of two bars are within
-        /// ContainerMembershipDistance on the workspace plane.
-        /// </summary>
+        /// <summary>Two bars share a container if ANY cube's claimed area in one overlaps ANY in the other.</summary>
         private bool BarsAreClose(Bar a, Bar b)
         {
-
             if (a.Length == 0 || b.Length == 0) return false;
-            
-            // Compute each bar's footprint rectangle on the XZ plane.
-            Bounds aBounds = ComputeBarFootprint(a);
-            Bounds bBounds = ComputeBarFootprint(b);
-
-            float distance = RectangleDistance(aBounds, bBounds);
-            return distance <= ContainerMembershipDistance;
-        }
-
-        private Bounds ComputeBarFootprint(Bar bar)
-        {
-            Cube leftmost = bar.GetLeftmostMember();
-            Cube rightmost = bar.GetRightmostMember();
-
-            if (leftmost == null || rightmost == null)
-                return new Bounds(bar.transform.position, Vector3.zero);
-
-            float minX = leftmost.transform.position.x - 0.5f;
-            float maxX = rightmost.transform.position.x + 0.5f;
-            float z = leftmost.transform.position.z;
-            float minZ = z - 0.5f;
-            float maxZ = z + 0.5f;
-
-            Vector3 center = new Vector3((minX + maxX) * 0.5f, 0f, (minZ + maxZ) * 0.5f);
-            Vector3 size = new Vector3(maxX - minX, 0f, maxZ - minZ);
-            return new Bounds(center, size);
-        }
-
-        /// <summary>
-        /// 2D rectangle-to-rectangle distance on the XZ plane (Y is ignored).
-        /// Returns 0 if rectangles overlap.
-        /// </summary>
-        private float RectangleDistance(Bounds a, Bounds b)
-        {
-            float dx = Mathf.Max(0f, Mathf.Max(a.min.x - b.max.x, b.min.x - a.max.x));
-            float dz = Mathf.Max(0f, Mathf.Max(a.min.z - b.max.z, b.min.z - a.max.z));
-            return Mathf.Sqrt(dx * dx + dz * dz);
-        }
-
-        // ---------------- Bookkeeping ----------------
-
-        private void DetachAllBarsFromContainers(Bar[] bars)
-        {
-            // Clear every container's members list, not just the ones reachable from bar.Container.
-            // This is necessary because some bars may have a null Container reference while their
-            // previous container still lists them (state desync during drag, split, etc.).
-            Container[] allContainers = FindObjectsByType<Container>(FindObjectsInactive.Exclude);
-            foreach (Container c in allContainers)
+            foreach (Cube ca in a.Members)
             {
-                // Make a copy because RemoveMember modifies the list we're iterating
-                List<Bar> currentMembers = new List<Bar>(c.Members);
-                foreach (Bar bar in currentMembers)
-                {
-                    c.RemoveMember(bar);
-                }
+                Rect ra = ca.GetClaimedArea();
+                foreach (Cube cb in b.Members)
+                    if (ra.Overlaps(cb.GetClaimedArea())) return true;
             }
-
-            // Also clear the bar references defensively
-            foreach (Bar bar in bars)
-            {
-                bar.SetContainer(null);
-            }
-        }
-        private void CleanupEmptyContainers()
-        {
-            Container[] allContainers = FindObjectsByType<Container>(FindObjectsInactive.Exclude);
-            foreach (Container c in allContainers)
-            {
-                c.DestroyIfEmpty();
-            }
+            return false;
         }
     }
 }

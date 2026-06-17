@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: GrammarConfig
   m_EditorClassIdentifier: Assembly-CSharp::RuinApp.Workspace.GrammarConfig
   cubeSize: 1
-  bondTolerance: 0.3
-  containerClaimMargin: 0.5
-  shadowMaterial: {fileID: 2100000, guid: da13366b89826114aac2ef5f5542c12c, type: 2}
+  bondTolerance: 0.63
+  claimMultiplier: 1.91
+  shadowMaterial: {fileID: 2100000, guid: 799dc883594ad6842a1a0b2b830bb591, type: 2}

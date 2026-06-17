@@ -11,7 +11,7 @@ namespace RuinApp.Manipulation
     /// Part 5B: grabs operate on bars; grab-from-top splits; bond-on-release merges bars
     /// while enforcing the five-cube cap. The grabbed cube serves as the drag anchor.
     /// </summary>
-    public class WorkspaceInputController : MonoBehaviour
+    public class WorkspaceInputController_OLD : MonoBehaviour
     {
         [SerializeField] private Camera workspaceCamera;
         [SerializeField] private LayerMask draggableLayerMask = ~0;
@@ -24,7 +24,8 @@ namespace RuinApp.Manipulation
         [Header("Face detection")]
         [SerializeField] private float topFaceNormalThreshold = 0.7f;
         [SerializeField] private RuinApp.Workspace.ContainerDetector containerDetector;
-
+        private Container heldContainer;
+        private List<Vector3> heldContainerMemberOffsets; // each member bar's offset from the pointer at grab time
         private Bar heldBar;
         private Cube grabbedCube;
         private Vector3 grabOffset;
@@ -47,9 +48,9 @@ namespace RuinApp.Manipulation
 
             if (Mouse.current.leftButton.wasPressedThisFrame)
                 TryBeginDrag();
-            else if (Mouse.current.leftButton.isPressed && heldBar != null)
+            else if (Mouse.current.leftButton.isPressed && (heldBar != null || heldContainer != null))
                 ContinueDrag();
-            else if (Mouse.current.leftButton.wasReleasedThisFrame && heldBar != null)
+            else if (Mouse.current.leftButton.wasReleasedThisFrame && (heldBar != null || heldContainer != null))
                 EndDrag();
         }
 
@@ -60,7 +61,12 @@ namespace RuinApp.Manipulation
             Vector2 pointerPos = Mouse.current.position.ReadValue();
             Ray ray = workspaceCamera.ScreenPointToRay(pointerPos);
 
-            if (!Physics.Raycast(ray, out RaycastHit hit, 100f, draggableLayerMask)) return;
+            if (!Physics.Raycast(ray, out RaycastHit hit, 100f, draggableLayerMask))
+            {
+                // Ray missed all cubes. Check if the pointer landed inside a container's claimed area.
+                TryBeginContainerDrag(pointerPos);
+                return;
+            }
 
             Cube hitCube = hit.collider.GetComponent<Cube>();
             if (hitCube == null) return;
@@ -132,6 +138,30 @@ namespace RuinApp.Manipulation
 
         private void ContinueDrag()
         {
+            // Container drag: slide all member bars rigidly with the pointer (flat, no lift).
+            if (heldContainer != null)
+            {
+                Vector2 cPointer = Mouse.current.position.ReadValue();
+                
+                Ray cRay = workspaceCamera.ScreenPointToRay(cPointer);
+                
+                if (!workspacePlane.Raycast(cRay, out float cEnter)) return;
+                
+                Vector3 cPointerOnPlane = cRay.GetPoint(cEnter);
+                
+                Vector3 pointerFlat = new Vector3(cPointerOnPlane.x, 0f, cPointerOnPlane.z);
+
+                var members = heldContainer.Members;
+                for (int i = 0; i < members.Count; i++)
+                {
+                    Bar bar = members[i];
+                    Vector3 targetFlat = pointerFlat + heldContainerMemberOffsets[i];
+                    Vector3 delta = targetFlat - new Vector3(bar.transform.position.x, 0f, bar.transform.position.z);
+                    bar.transform.position += new Vector3(delta.x, 0f, delta.z);
+                }
+                return;
+            }
+
             Vector2 pointerPos = Mouse.current.position.ReadValue();
             Ray ray = workspaceCamera.ScreenPointToRay(pointerPos);
 
@@ -139,6 +169,8 @@ namespace RuinApp.Manipulation
 
             Vector3 hitPoint = ray.GetPoint(enter);
 
+            Debug.Log($"[BarDrag] hitPoint ({hitPoint.x:F2}, {hitPoint.z:F2}) | grabbedCube actual ({grabbedCube.transform.position.x:F2}, {grabbedCube.transform.position.z:F2})");
+            
             Vector3 targetForGrabbed = new Vector3(
                 hitPoint.x + grabOffset.x,
                 dragHeight,
@@ -170,6 +202,17 @@ namespace RuinApp.Manipulation
 
         private void EndDrag()
         {
+            // Container drag release: clear held container, recluster (membership may have changed).
+            if (heldContainer != null)
+            {
+                heldContainer = null;
+                heldContainerMemberOffsets = null;
+
+                if (containerDetector != null)
+                    containerDetector.ReclusterAllBars();
+                return;
+            }
+
             Bar releasedBar = heldBar;
             heldBar = null;
             sourceOfHeldBar = null;
@@ -280,6 +323,9 @@ namespace RuinApp.Manipulation
             }
 
             Destroy(incoming.gameObject);
+            
+            if (containerDetector != null)
+                containerDetector.ReclusterAllBars();
 
         }
 
@@ -305,6 +351,65 @@ namespace RuinApp.Manipulation
                 return new Vector3(p.x, 0f, p.z);
             }
             return Vector3.zero;
+        }
+        /// <summary>
+        /// If the pointer (projected onto the workspace) lands within any container's claimed area
+        /// (the union of its members' claimed rects) but not on a cube, grab the whole container.
+        /// All member bars will move together rigidly with the pointer.
+        /// </summary>
+        private void TryBeginContainerDrag(Vector2 pointerPos)
+        {
+            Debug.Log("entered container drag");
+            Vector2 m = Mouse.current.position.ReadValue();
+            Debug.Log($"[DIAG] mouse=({m.x:F0},{m.y:F0}) Screen=({Screen.width}x{Screen.height}) camPixel=({workspaceCamera.pixelWidth}x{workspaceCamera.pixelHeight}) rect={workspaceCamera.rect}");
+            
+            Vector2 m2 = Mouse.current.position.ReadValue();
+            Debug.Log($"[DIAG2] mouse=({m2.x:F0},{m2.y:F0}) Screen=({Screen.width}x{Screen.height}) " + $"display=({Display.main.renderingWidth}x{Display.main.renderingHeight}) " + $"system=({Display.main.systemWidth}x{Display.main.systemHeight})");
+            // Read the pointer fresh, identically to ContinueDrag (which projects correctly).
+            Vector2 freshPointer = Mouse.current.position.ReadValue();
+            Ray ray = workspaceCamera.ScreenPointToRay(freshPointer);
+
+            if (!workspacePlane.Raycast(ray, out float enter)) return;
+            
+            Debug.Log("Passed the return line");
+
+            Vector3 pointerOnPlane = ray.GetPoint(enter);
+            Debug.DrawLine(ray.origin, pointerOnPlane, Color.red, 2f);   // camera → where the ray hits Y=0
+            Debug.DrawRay(pointerOnPlane, Vector3.up * 2f, Color.yellow, 2f); // a stalk at the landing spot
+            
+            Vector2 point2D = new Vector2(pointerOnPlane.x, pointerOnPlane.z);
+            Debug.Log($"[ContainerDrag] passed=({pointerPos.x:F0},{pointerPos.y:F0}) fresh=({freshPointer.x:F0},{freshPointer.y:F0}) -> world ({point2D.x:F2}, {point2D.y:F2})");
+
+            Container[] containers = FindObjectsByType<Container>(FindObjectsInactive.Exclude);
+
+            foreach (Container container in containers)
+            {
+                foreach (Bar bar in container.Members)
+                {
+                    foreach (Cube cube in bar.Members)
+                    {
+                        if (cube.GetClaimedArea().Contains(point2D))
+                        {
+                            BeginContainerDrag(container, pointerOnPlane);
+                            Debug.Log("[ContainerDrag] GRABBED container");
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        private void BeginContainerDrag(Container container, Vector3 pointerOnPlane)
+        {
+            heldContainer = container;
+
+            // Record each member bar's offset from the pointer, so the group moves rigidly.
+            heldContainerMemberOffsets = new List<Vector3>();
+            foreach (Bar bar in container.Members)
+            {
+                Vector3 barOnPlane = new Vector3(bar.transform.position.x, 0f, bar.transform.position.z);
+                heldContainerMemberOffsets.Add(barOnPlane - new Vector3(pointerOnPlane.x, 0f, pointerOnPlane.z));
+            }
         }
     }
 }

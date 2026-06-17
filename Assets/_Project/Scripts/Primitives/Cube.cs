@@ -8,24 +8,26 @@ namespace RuinApp.Primitives
         public bool GrabbedFromTop { get; set; }
         public Bar Bar { get; private set; }
 
-        [SerializeField] private GameObject shadowBlobPrefab;
+        [SerializeField] private GameObject cubeShadowPrefab;
         [SerializeField] private RuinApp.Workspace.GrammarConfig config;
         private void Awake()
         {
             CubeId = System.Guid.NewGuid().ToString();
-            // SpawnShadowBlob();
+            SpawnShadow();
         }
 
-        private void SpawnShadowBlob()
+        private void SpawnShadow()
         {
-            if (shadowBlobPrefab == null) return;
+            if (cubeShadowPrefab == null) return;
 
-            GameObject blob = Instantiate(shadowBlobPrefab);
-            ShadowFollower follower = blob.GetComponent<ShadowFollower>();
-            if (follower != null)
-            {
-                follower.SetTarget(transform);
-            }
+            GameObject shadow = Instantiate(cubeShadowPrefab, transform);  // parent = this cube
+            shadow.transform.localPosition = new Vector3(0f, -0.48f, 0f);  // at the cube's base, near ground
+            shadow.transform.localRotation = Quaternion.Euler(90f, 0f, 0f); // flat on XZ
+
+            CubeShadow cs = shadow.GetComponent<CubeShadow>();
+            //Debug.Log($"[SpawnShadow] shadow created, cs={(cs != null ? "OK" : "NULL")}");
+            if (cs != null)
+                cs.SetTarget(transform);  // still set target for sizing; following now via parenting
         }
 
         public void SetBar(Bar bar)
@@ -39,20 +41,26 @@ namespace RuinApp.Primitives
         /// by the container claim margin on all sides. Cubes whose claims overlap share a container,
         /// and the union of claims defines the container's shadow region.
         /// </summary>
+        /// <summary>
+        /// Returns the area this cube claims on the workspace plane (XZ), as a Rect
+        /// (Rect.x→worldX, Rect.y→worldZ). The claim is the cube footprint scaled by the
+        /// config's claimMultiplier. This same claim drives both the shadow visual size and
+        /// container membership (cubes whose claims overlap share a container).
+        /// </summary>
         public Rect GetClaimedArea()
         {
-        float size = config != null ? config.cubeSize : 1.0f;
-        float margin = config != null ? config.containerClaimMargin : 0.5f;
+            float size = config != null ? config.cubeSize : 1.0f;
+            float mult = config != null ? config.claimMultiplier : 2.0f;
+            //Debug.Log($"[Cube] config={(config != null ? "OK" : "NULL")} multiplier={mult}");
 
-        float half = size * 0.5f + margin;
-        Vector3 pos = transform.position;
+            float half = (size * mult) * 0.5f;
+            Vector3 pos = transform.position;
 
-        // Rect is defined by (x, y, width, height); we map x→worldX, y→worldZ.
-        return new Rect(
-            pos.x - half,
-            pos.z - half,
-            half * 2f,
-            half * 2f
+            return new Rect(
+                pos.x - half,
+                pos.z - half,
+                half * 2f,
+                half * 2f
             );
         }
     }
