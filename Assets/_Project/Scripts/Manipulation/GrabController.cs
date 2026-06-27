@@ -101,6 +101,14 @@ namespace RuinApp.Manipulation
             if (Physics.Raycast(cam.ScreenPointToRay(px), out hit, 100f))
                 cube = hit.collider.GetComponent<Cube>();
 
+            // Pre-resolve the claim candidate so the source-lock gate has a single cube to
+            // evaluate regardless of which path is about to be taken.
+            Cube claimed = cube == null ? CubeWhoseClaimContains(new Vector2(g.x, g.z)) : null;
+            Cube candidate = cube ?? claimed;
+
+            // Source-lock: one gate, one owner. Bar == null iff the cube still lives in the source.
+            if (candidate != null && candidate.Bar == null) { Log("source -> locked"); return; }
+
             if (cube != null)
             {
                 EnsureWrapped(cube); // a fresh cube pulled from the source becomes 1 cube / 1 bar
@@ -121,7 +129,6 @@ namespace RuinApp.Manipulation
             }
             else
             {
-                Cube claimed = CubeWhoseClaimContains(new Vector2(g.x, g.z));
                 if (claimed == null) { Log("empty -> no-op"); return; }
 
                 EnsureWrapped(claimed);
